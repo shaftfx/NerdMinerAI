@@ -41,9 +41,9 @@ static bool hex_to_bytes(const char* hex, uint8_t* out, size_t len) {
 // Fetch the SHA256 sidecar file and parse the 64-hex-char hash.
 static bool fetch_sha256(const String& sha_url, uint8_t expected[32]) {
     WiFiClientSecure client;
-    client.setCACertBundle(esp_crt_bundle_attach);
+    client.setCACertBundle(arduino_esp_crt_bundle_attach);
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_RFC2616);
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
     if (!http.begin(client, sha_url)) return false;
     int code = http.GET();
     if (code != HTTP_CODE_OK) { http.end(); return false; }
@@ -74,9 +74,9 @@ static bool flash_binary(const String& bin_url, const uint8_t expected_sha[32]) 
     }
 
     WiFiClientSecure client;
-    client.setCACertBundle(esp_crt_bundle_attach);
+    client.setCACertBundle(arduino_esp_crt_bundle_attach);
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_RFC2616);
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
     http.setTimeout(60000);
     if (!http.begin(client, bin_url)) {
         esp_ota_abort(handle);
@@ -148,9 +148,9 @@ static void ota_check_and_update() {
 
     // --- 1. Fetch release metadata ---
     WiFiClientSecure client;
-    client.setCACertBundle(esp_crt_bundle_attach);
+    client.setCACertBundle(arduino_esp_crt_bundle_attach);
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_RFC2616);
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
     http.setTimeout(15000);
     if (!http.begin(client, OTA_API_URL)) return;
 
