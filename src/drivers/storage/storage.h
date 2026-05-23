@@ -16,6 +16,10 @@
 #define DEFAULT_POOLPASS	"x"
 #define DEFAULT_WALLETID	"yourBtcAddress"
 #define DEFAULT_POOLPORT	21496
+#define DEFAULT_POOLURL2	"pool.nerdminers.org"
+#define DEFAULT_POOLPORT2	3333
+#define DEFAULT_POOLURL3	"solo.ckpool.org"
+#define DEFAULT_POOLPORT3	3333
 #define DEFAULT_TIMEZONE	2
 #define DEFAULT_SAVESTATS	false
 #define DEFAULT_INVERTCOLORS	false
@@ -45,6 +49,11 @@
 #define JSON_SPIFFS_KEY_STATS2NV	"saveStatsToNVS"
 #define JSON_SPIFFS_KEY_INVCOLOR	"invertColors"
 #define JSON_SPIFFS_KEY_BRIGHTNESS	"Brightness"
+// Fallback pools (NerdMinerAI addition)
+#define JSON_SPIFFS_KEY_POOLURL2	"poolString2"
+#define JSON_SPIFFS_KEY_POOLPORT2	"portNumber2"
+#define JSON_SPIFFS_KEY_POOLURL3	"poolString3"
+#define JSON_SPIFFS_KEY_POOLPORT3	"portNumber3"
 
 // settings
 struct TSettings
@@ -59,6 +68,11 @@ struct TSettings
 	bool saveStats{ DEFAULT_SAVESTATS };
 	bool invertColors{ DEFAULT_INVERTCOLORS };
 	int Brightness{ DEFAULT_BRIGHTNESS };
+	// Fallback pools for adaptive pool scoring
+	String PoolAddress2{ DEFAULT_POOLURL2 };
+	int    PoolPort2{ DEFAULT_POOLPORT2 };
+	String PoolAddress3{ DEFAULT_POOLURL3 };
+	int    PoolPort3{ DEFAULT_POOLPORT3 };
 };
 
 #endif // _STORAGE_H_

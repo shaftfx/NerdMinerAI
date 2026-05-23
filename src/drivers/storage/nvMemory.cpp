@@ -28,7 +28,7 @@ bool nvMemory::saveConfig(TSettings* Settings)
         Serial.println(F("SPIFS: Saving configuration."));
 
         // Create a JSON document
-        StaticJsonDocument<512> json;
+        StaticJsonDocument<768> json;
         json[JSON_SPIFFS_KEY_POOLURL] = Settings->PoolAddress;
         json[JSON_SPIFFS_KEY_POOLPORT] = Settings->PoolPort;
         json[JSON_SPIFFS_KEY_POOLPASS] = Settings->PoolPassword;
@@ -37,6 +37,10 @@ bool nvMemory::saveConfig(TSettings* Settings)
         json[JSON_SPIFFS_KEY_STATS2NV] = Settings->saveStats;
         json[JSON_SPIFFS_KEY_INVCOLOR] = Settings->invertColors;
         json[JSON_SPIFFS_KEY_BRIGHTNESS] = Settings->Brightness;
+        json[JSON_SPIFFS_KEY_POOLURL2] = Settings->PoolAddress2;
+        json[JSON_SPIFFS_KEY_POOLPORT2] = Settings->PoolPort2;
+        json[JSON_SPIFFS_KEY_POOLURL3] = Settings->PoolAddress3;
+        json[JSON_SPIFFS_KEY_POOLPORT3] = Settings->PoolPort3;
 
         // Open config file
         File configFile = SPIFFS.open(JSON_CONFIG_FILE, "w");
@@ -83,7 +87,7 @@ bool nvMemory::loadConfig(TSettings* Settings)
             if (configFile)
             {
                 Serial.println("SPIFS: Loading config file");
-                StaticJsonDocument<512> json;
+                StaticJsonDocument<768> json;
                 DeserializationError error = deserializeJson(json, configFile);
                 configFile.close();
                 serializeJsonPretty(json, Serial);
@@ -109,6 +113,15 @@ bool nvMemory::loadConfig(TSettings* Settings)
                     } else {
                         Settings->Brightness = 250;
                     }
+                    // Fallback pools (backward-compatible — absent keys keep defaults)
+                    if (json.containsKey(JSON_SPIFFS_KEY_POOLURL2))
+                        Settings->PoolAddress2 = json[JSON_SPIFFS_KEY_POOLURL2].as<String>();
+                    if (json.containsKey(JSON_SPIFFS_KEY_POOLPORT2))
+                        Settings->PoolPort2 = json[JSON_SPIFFS_KEY_POOLPORT2].as<int>();
+                    if (json.containsKey(JSON_SPIFFS_KEY_POOLURL3))
+                        Settings->PoolAddress3 = json[JSON_SPIFFS_KEY_POOLURL3].as<String>();
+                    if (json.containsKey(JSON_SPIFFS_KEY_POOLPORT3))
+                        Settings->PoolPort3 = json[JSON_SPIFFS_KEY_POOLPORT3].as<int>();
                     return true;
                 }
                 else

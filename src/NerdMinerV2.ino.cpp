@@ -13,8 +13,12 @@
 #include "monitor.h"
 #include "drivers/displays/display.h"
 #include "drivers/storage/SDCard.h"
+#include "drivers/storage/storage.h"
 #include "ShaTests/nerdSHA_HWTest.h"
 #include "timeconst.h"
+#include "ota_manager.h"
+#include "pool_scorer.h"
+#include "wifi_guardian.h"
 
 #ifdef TOUCH_ENABLE
 #include "TouchHandler.h"
@@ -187,6 +191,26 @@ void setup()
 
   /******** MONITOR SETUP *****/
   setup_monitor();
+
+  /******** OTA: VALIDATE BOOT (cancel rollback if new image is healthy) *****/
+  ota_validate_on_boot();
+
+  /******** POOL SCORER: init with primary + 2 fallbacks from Settings *****/
+  {
+    extern TSettings Settings;
+    PoolConfig pools[POOL_COUNT] = {
+      { Settings.PoolAddress,  (uint16_t)Settings.PoolPort  },
+      { Settings.PoolAddress2, (uint16_t)Settings.PoolPort2 },
+      { Settings.PoolAddress3, (uint16_t)Settings.PoolPort3 },
+    };
+    pool_scorer_init(pools);
+  }
+
+  /******** OTA UPDATE TASK (low priority, yields to mining) *****/
+  xTaskCreate(runOTATask, "OTA", 8192, NULL, 1, NULL);
+
+  /******** WIFI GUARDIAN TASK *****/
+  xTaskCreate(runWiFiGuardian, "WiFiGuard", 2048, NULL, 1, NULL);
 }
 
 void app_error_fault_handler(void *arg) {

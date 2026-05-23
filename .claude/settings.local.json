@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc *)",
+      "Bash(python -c \"import pypdf; print\\('pypdf OK'\\)\")",
+      "Bash(python -c \"import PyPDF2; print\\('PyPDF2 OK'\\)\")",
+      "Bash(python -c \"import pymupdf; print\\('pymupdf OK'\\)\")",
+      "Bash(python -c \"import fitz; print\\('fitz/pymupdf OK'\\)\")",
+      "Bash(pdftotext --version)",
+      "Bash(python -c ' *)",
+      "Bash(python *)"
+    ]
+  }
+}

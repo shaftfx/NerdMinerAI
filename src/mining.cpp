@@ -18,10 +18,17 @@
 #include <map>
 #include "mbedtls/sha256.h"
 #include "i2c_master.h"
+#include "thermal.h"
+#include "ota_manager.h"
+#include "pool_scorer.h"
 
 //10 Jobs per second
 #define NONCE_PER_JOB_SW 4096
 #define NONCE_PER_JOB_HW 16*1024
+
+// BIP320: use bits [28:17] of version as auxiliary nonce (12 bits = 4096 values)
+#define VERSIONBITS_MASK 0x1FFE0000U
+#define VERSIONBITS_MAX  4096U
 
 //#define I2C_SLAVE
 
@@ -245,14 +252,37 @@ void runStratumWorker(void *name) {
   }
 #endif
 
-  // connect to pool  
+  // connect to pool
   double currentPoolDifficulty = DEFAULT_DIFFICULTY;
   uint32_t nonce_pool = 0;
   uint32_t job_pool = 0xFFFFFFFF;
   uint32_t last_job_time = millis();
 
+  // BIP320 versionbits state (reset on each new job)
+  uint32_t version_base_le   = 0;
+  uint32_t versionbits_pool  = 0;
+
+  // Pool scorer: track active pool index locally to detect switches
+  uint8_t current_pool_idx = g_active_pool_idx;
+
   while(true) {
       
+    // Pool scorer: switch pool when scorer recommends it
+    if (g_active_pool_idx != current_pool_idx) {
+      const PoolConfig& pc = pool_scorer_config(g_active_pool_idx);
+      Serial.printf("[Stratum] Pool switch %d->%d: %s:%d\n",
+                    current_pool_idx, g_active_pool_idx,
+                    pc.address.c_str(), pc.port);
+      Settings.PoolAddress = pc.address;
+      Settings.PoolPort    = pc.port;
+      serverIP = IPAddress(1, 1, 1, 1); // force DNS re-resolve
+      current_pool_idx = g_active_pool_idx;
+      client.stop();
+      isMinerSuscribed = false;
+      MiningJobStop(job_pool, s_submition_map);
+      continue;
+    }
+
     if(WiFi.status() != WL_CONNECTED){
       // WiFi is disconnected, so reconnect now
       mMonitor.NerdStatus = NM_Connecting;
@@ -260,7 +290,7 @@ void runStratumWorker(void *name) {
       WiFi.reconnect();
       vTaskDelay(5000 / portTICK_PERIOD_MS);
       continue;
-    } 
+    }
 
     if(!checkPoolConnection()){
       //If server is not reachable add random delay for connection retries
@@ -364,6 +394,11 @@ void runStratumWorker(void *name) {
                                           mMiner.bytearray_blockheader[126] = 0x02;
                                           mMiner.bytearray_blockheader[127] = 0x80;
 
+                                          // Capture version base for BIP320 rolling (reset per job)
+                                          memcpy(&version_base_le, mMiner.bytearray_blockheader, 4);
+                                          version_base_le &= ~VERSIONBITS_MASK;
+                                          versionbits_pool = 0;
+
                                           nerd_mids(diget_mid, mMiner.bytearray_blockheader);
                                           nerd_sha256_bake(diget_mid, mMiner.bytearray_blockheader+64, bake);
 
@@ -398,23 +433,38 @@ void runStratumWorker(void *name) {
                                             for (int i = 0; i < 4; ++ i)
                                             {
                                               #if 1
-                                              JobPush( s_job_request_list_sw, job_pool, nonce_pool, NONCE_PER_JOB_SW, currentPoolDifficulty, mMiner.bytearray_blockheader, diget_mid, bake);
+                                              // BIP320: apply current versionbits to blockheader
+                                              {
+                                                uint32_t vb  = versionbits_pool & (VERSIONBITS_MAX - 1);
+                                                uint32_t ver = version_base_le | ((vb << 17) & VERSIONBITS_MASK);
+                                                ((uint32_t*)mMiner.bytearray_blockheader)[0] = ver;
+                                                nerd_mids(diget_mid, mMiner.bytearray_blockheader);
+                                                nerd_sha256_bake(diget_mid, mMiner.bytearray_blockheader+64, bake);
+                                                versionbits_pool++;
+                                              }
+                                              JobPush( s_job_request_list_sw, job_pool, nonce_pool,
+                                                       thermal_nonce_sw(NONCE_PER_JOB_SW),
+                                                       currentPoolDifficulty, mMiner.bytearray_blockheader, diget_mid, bake);
                                               #ifdef RANDOM_NONCE
                                               nonce_pool = RandomGet() & RANDOM_NONCE_MASK;
                                               #else
-                                              nonce_pool += NONCE_PER_JOB_SW;
+                                              nonce_pool += thermal_nonce_sw(NONCE_PER_JOB_SW);
                                               #endif
                                               #endif
                                               #ifdef HARDWARE_SHA265
                                                 #if defined(CONFIG_IDF_TARGET_ESP32)
-                                                  JobPush( s_job_request_list_hw, job_pool, nonce_pool, NONCE_PER_JOB_HW, currentPoolDifficulty, sha_buffer_swap, hw_midstate, bake);
+                                                  JobPush( s_job_request_list_hw, job_pool, nonce_pool,
+                                                           thermal_nonce_hw(NONCE_PER_JOB_HW),
+                                                           currentPoolDifficulty, sha_buffer_swap, hw_midstate, bake);
                                                 #else
-                                                  JobPush( s_job_request_list_hw, job_pool, nonce_pool, NONCE_PER_JOB_HW, currentPoolDifficulty, mMiner.bytearray_blockheader, hw_midstate, bake);
+                                                  JobPush( s_job_request_list_hw, job_pool, nonce_pool,
+                                                           thermal_nonce_hw(NONCE_PER_JOB_HW),
+                                                           currentPoolDifficulty, mMiner.bytearray_blockheader, hw_midstate, bake);
                                                 #endif
                                               #ifdef RANDOM_NONCE
                                               nonce_pool = RandomGet() & RANDOM_NONCE_MASK;
                                               #else
-                                              nonce_pool += NONCE_PER_JOB_HW;
+                                              nonce_pool += thermal_nonce_hw(NONCE_PER_JOB_HW);
                                               #endif
                                               #endif
                                             }
@@ -448,6 +498,7 @@ void runStratumWorker(void *name) {
                                             Serial.println("CONGRATULATIONS! Valid block found");
                                             valids++;
                                           }
+                                          pool_scorer_on_accept(g_active_pool_idx, millis());
                                           s_submition_map.erase(itt);
                                         }
                                       }
@@ -458,6 +509,7 @@ void runStratumWorker(void *name) {
                                         if (itt != s_submition_map.end())
                                         {
                                           Serial.printf("Refuse submition %d\n", id);
+                                          pool_scorer_on_reject(g_active_pool_idx);
                                           s_submition_map.erase(itt);
                                         }
                                       }
@@ -518,11 +570,21 @@ void runStratumWorker(void *name) {
 #if 1
       while (s_job_request_list_sw.size() < 4)
       {
-        JobPush( s_job_request_list_sw, job_pool, nonce_pool, NONCE_PER_JOB_SW, currentPoolDifficulty, mMiner.bytearray_blockheader, diget_mid, bake);
+        // BIP320: roll versionbits and recompute midstate
+        {
+          uint32_t vb  = versionbits_pool & (VERSIONBITS_MAX - 1);
+          uint32_t ver = version_base_le | ((vb << 17) & VERSIONBITS_MASK);
+          ((uint32_t*)mMiner.bytearray_blockheader)[0] = ver;
+          nerd_mids(diget_mid, mMiner.bytearray_blockheader);
+          nerd_sha256_bake(diget_mid, mMiner.bytearray_blockheader+64, bake);
+          versionbits_pool++;
+        }
+        uint32_t sw_batch = thermal_nonce_sw(NONCE_PER_JOB_SW);
+        JobPush( s_job_request_list_sw, job_pool, nonce_pool, sw_batch, currentPoolDifficulty, mMiner.bytearray_blockheader, diget_mid, bake);
         #ifdef RANDOM_NONCE
         nonce_pool = RandomGet() & RANDOM_NONCE_MASK;
         #else
-        nonce_pool += NONCE_PER_JOB_SW;
+        nonce_pool += sw_batch;
         #endif
       }
 #endif
@@ -530,15 +592,16 @@ void runStratumWorker(void *name) {
       #ifdef HARDWARE_SHA265
       while (s_job_request_list_hw.size() < 4)
       {
+        uint32_t hw_batch = thermal_nonce_hw(NONCE_PER_JOB_HW);
         #if defined(CONFIG_IDF_TARGET_ESP32)
-          JobPush( s_job_request_list_hw, job_pool, nonce_pool, NONCE_PER_JOB_HW, currentPoolDifficulty, sha_buffer_swap, hw_midstate, bake);
+          JobPush( s_job_request_list_hw, job_pool, nonce_pool, hw_batch, currentPoolDifficulty, sha_buffer_swap, hw_midstate, bake);
         #else
-          JobPush( s_job_request_list_hw, job_pool, nonce_pool, NONCE_PER_JOB_HW, currentPoolDifficulty, mMiner.bytearray_blockheader, hw_midstate, bake);
+          JobPush( s_job_request_list_hw, job_pool, nonce_pool, hw_batch, currentPoolDifficulty, mMiner.bytearray_blockheader, hw_midstate, bake);
         #endif
         #ifdef RANDOM_NONCE
         nonce_pool = RandomGet() & RANDOM_NONCE_MASK;
         #else
-        nonce_pool += NONCE_PER_JOB_HW;
+        nonce_pool += hw_batch;
         #endif
       }
       #endif
@@ -555,6 +618,7 @@ void runStratumWorker(void *name) {
         if (!client.connected())
           break;
         unsigned long sumbit_id = 0;
+        pool_scorer_on_submit(g_active_pool_idx, millis());
         tx_mining_submit(client, mWorker, mJob, res->nonce, sumbit_id);
         Serial.print("   - Current diff share: "); Serial.println(res->difficulty,12);
         Serial.print("   - Current pool diff : "); Serial.println(currentPoolDifficulty,12);
@@ -594,6 +658,9 @@ void minerWorkerSw(void * task_id)
   uint32_t wdt_counter = 0;
   while (1)
   {
+    // Pause during OTA flash
+    if (g_ota_in_progress) { vTaskDelay(100 / portTICK_PERIOD_MS); continue; }
+
     {
       std::lock_guard<std::mutex> lock(s_job_mutex);
       if (result)
@@ -791,7 +858,6 @@ void minerWorkerHw(void * task_id)
   uint8_t digest_mid[32];
   uint8_t sha_buffer[64];
   uint32_t wdt_counter = 0;
-
 #ifdef VALIDATION
   uint8_t doubleHash[32];
   uint32_t diget_mid[8];
@@ -800,6 +866,9 @@ void minerWorkerHw(void * task_id)
 
   while (1)
   {
+    // Pause during OTA flash
+    if (g_ota_in_progress) { vTaskDelay(100 / portTICK_PERIOD_MS); continue; }
+
     {
       std::lock_guard<std::mutex> lock(s_job_mutex);
       if (result)
