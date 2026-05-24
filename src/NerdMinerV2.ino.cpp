@@ -1,9 +1,9 @@
 
 #include <Wire.h>
+#include "rom/ets_sys.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WebServer.h>
 #include <esp_task_wdt.h>
 #include <OneButton.h>
 
@@ -19,6 +19,7 @@
 #include "ota_manager.h"
 #include "pool_scorer.h"
 #include "wifi_guardian.h"
+#include "web_ui.h"
 
 #ifdef TOUCH_ENABLE
 #include "TouchHandler.h"
@@ -61,8 +62,20 @@ const char* ntpServer = "pool.ntp.org";
 
 
 /********* INIT *****/
+__attribute__((constructor(101)))
+static void __pre_ctor() { ets_printf("\n\n[DBG] pre-ctor (priority 101)\n"); }
+
+__attribute__((constructor(65535)))
+static void __post_ctor() { ets_printf("[DBG] post-ctor (priority 65535) -- all ctors done\n"); }
+
 void setup()
 {
+  ets_printf("[DBG] setup() start\n");
+  Serial.begin(115200);
+  delay(200);
+  Serial.println("\n\n=== NerdMinerAI SETUP START ===");
+  Serial.flush();
+
       //Init pin 15 to eneble 5V external power (LilyGo bug)
   #ifdef PIN_ENABLE5V
       pinMode(PIN_ENABLE5V, OUTPUT);
@@ -211,6 +224,9 @@ void setup()
 
   /******** WIFI GUARDIAN TASK *****/
   xTaskCreate(runWiFiGuardian, "WiFiGuard", 2048, NULL, 1, NULL);
+
+  /******** WEB UI (port 8080) *****/
+  webUI_init();
 }
 
 void app_error_fault_handler(void *arg) {
@@ -238,6 +254,7 @@ void loop() {
   touchHandler.isTouched();
 #endif
   wifiManagerProcess(); // avoid delays() in loop when non-blocking and other long running code
+  webUI_process();
 
   vTaskDelay(50 / portTICK_PERIOD_MS);
 }
