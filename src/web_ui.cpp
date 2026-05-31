@@ -1,8 +1,10 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <Update.h>
 #include <ArduinoJson.h>
 #include "web_ui.h"
+#include "ota_manager.h"
 #include "drivers/storage/storage.h"
 #include "drivers/storage/nvMemory.h"
 #include "thermal.h"
@@ -26,7 +28,7 @@ extern global_data  gData;
 extern TSettings Settings;
 extern nvMemory  nvMem;
 
-static WebServer webServer(8080);
+static WebServer* webServer = nullptr;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HTML pages
@@ -150,16 +152,45 @@ function resetWifi(){
 </script></body></html>
 )rawhtml";
 
+static const char OTA_HTML[] PROGMEM = R"rawhtml(
+<!DOCTYPE html><html><head><title>OTA Update</title>
+<style>body{font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 16px}
+h2{color:#f7931a}progress{width:100%;height:20px}
+.btn{background:#f7931a;color:#fff;border:none;padding:10px 24px;border-radius:4px;cursor:pointer;font-size:1em}
+</style></head><body>
+<h2>Firmware Update</h2>
+<form id="f" method="POST" action="/update" enctype="multipart/form-data">
+  <input type="file" name="firmware" accept=".bin" required><br><br>
+  <button class="btn" type="submit">Flash</button>
+</form>
+<progress id="p" value="0" max="100" style="display:none"></progress>
+<p id="s"></p>
+<script>
+document.getElementById('f').onsubmit=function(e){
+  e.preventDefault();
+  var fd=new FormData(this);
+  var x=new XMLHttpRequest();
+  x.upload.onprogress=function(e){if(e.lengthComputable){
+    var p=document.getElementById('p');p.style.display='';p.value=100*e.loaded/e.total;
+  }};
+  x.onload=function(){document.getElementById('s').textContent=x.responseText;};
+  x.onerror=function(){document.getElementById('s').textContent='Upload failed';};
+  x.open('POST','/update');x.send(fd);
+};
+</script>
+</body></html>
+)rawhtml";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
 static void handleDashboard() {
-    webServer.send_P(200, "text/html", DASHBOARD_HTML);
+    webServer->send_P(200, "text/html", DASHBOARD_HTML);
 }
 
 static void handleSettings() {
-    webServer.send_P(200, "text/html", SETTINGS_HTML);
+    webServer->send_P(200, "text/html", SETTINGS_HTML);
 }
 
 static void handleStats() {
@@ -245,41 +276,41 @@ static void handleStats() {
 
     String json;
     serializeJson(doc, json);
-    webServer.sendHeader("Cache-Control", "no-cache");
-    webServer.send(200, "application/json", json);
+    webServer->sendHeader("Cache-Control", "no-cache");
+    webServer->send(200, "application/json", json);
 }
 
 static void handleSaveSettings() {
     bool needRestart = false;
 
-    if (webServer.hasArg("poolUrl"))
-        Settings.PoolAddress = webServer.arg("poolUrl");
-    if (webServer.hasArg("poolPort"))
-        Settings.PoolPort = webServer.arg("poolPort").toInt();
-    if (webServer.hasArg("poolPass"))
-        strncpy(Settings.PoolPassword, webServer.arg("poolPass").c_str(), sizeof(Settings.PoolPassword) - 1);
-    if (webServer.hasArg("wallet"))
-        strncpy(Settings.BtcWallet, webServer.arg("wallet").c_str(), sizeof(Settings.BtcWallet) - 1);
-    if (webServer.hasArg("timezone"))
-        Settings.Timezone = webServer.arg("timezone").toInt();
-    if (webServer.hasArg("saveStats"))
-        Settings.saveStats = (webServer.arg("saveStats") != "0");
-    if (webServer.hasArg("poolUrl2"))
-        Settings.PoolAddress2 = webServer.arg("poolUrl2");
-    if (webServer.hasArg("poolPort2"))
-        Settings.PoolPort2 = webServer.arg("poolPort2").toInt();
-    if (webServer.hasArg("poolUrl3"))
-        Settings.PoolAddress3 = webServer.arg("poolUrl3");
-    if (webServer.hasArg("poolPort3"))
-        Settings.PoolPort3 = webServer.arg("poolPort3").toInt();
+    if (webServer->hasArg("poolUrl"))
+        Settings.PoolAddress = webServer->arg("poolUrl");
+    if (webServer->hasArg("poolPort"))
+        Settings.PoolPort = webServer->arg("poolPort").toInt();
+    if (webServer->hasArg("poolPass"))
+        strncpy(Settings.PoolPassword, webServer->arg("poolPass").c_str(), sizeof(Settings.PoolPassword) - 1);
+    if (webServer->hasArg("wallet"))
+        strncpy(Settings.BtcWallet, webServer->arg("wallet").c_str(), sizeof(Settings.BtcWallet) - 1);
+    if (webServer->hasArg("timezone"))
+        Settings.Timezone = webServer->arg("timezone").toInt();
+    if (webServer->hasArg("saveStats"))
+        Settings.saveStats = (webServer->arg("saveStats") != "0");
+    if (webServer->hasArg("poolUrl2"))
+        Settings.PoolAddress2 = webServer->arg("poolUrl2");
+    if (webServer->hasArg("poolPort2"))
+        Settings.PoolPort2 = webServer->arg("poolPort2").toInt();
+    if (webServer->hasArg("poolUrl3"))
+        Settings.PoolAddress3 = webServer->arg("poolUrl3");
+    if (webServer->hasArg("poolPort3"))
+        Settings.PoolPort3 = webServer->arg("poolPort3").toInt();
 
     #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
-    if (webServer.hasArg("brightness")) {
-        int b = constrain(webServer.arg("brightness").toInt(), 0, 255);
+    if (webServer->hasArg("brightness")) {
+        int b = constrain(webServer->arg("brightness").toInt(), 0, 255);
         if (b != Settings.Brightness) { Settings.Brightness = b; needRestart = true; }
     }
-    if (webServer.hasArg("invertColors")) {
-        bool inv = (webServer.arg("invertColors") != "0");
+    if (webServer->hasArg("invertColors")) {
+        bool inv = (webServer->arg("invertColors") != "0");
         if (inv != Settings.invertColors) { Settings.invertColors = inv; needRestart = true; }
     }
     #endif
@@ -290,8 +321,8 @@ static void handleSaveSettings() {
         ? "{\"ok\":true,\"restart\":true,\"message\":\"Settings saved. Restarting in 4s...\"}"
         : "{\"ok\":true,\"restart\":false,\"message\":\"Settings saved.\"}";
 
-    webServer.sendHeader("Cache-Control", "no-cache");
-    webServer.send(200, "application/json", resp);
+    webServer->sendHeader("Cache-Control", "no-cache");
+    webServer->send(200, "application/json", resp);
 
     if (needRestart) {
         delay(500);
@@ -300,14 +331,57 @@ static void handleSaveSettings() {
 }
 
 static void handleResetWifi() {
-    webServer.send(200, "application/json", "{\"ok\":true}");
+    webServer->send(200, "application/json", "{\"ok\":true}");
     delay(300);
     extern void reset_configuration();
     reset_configuration();
 }
 
 static void handleNotFound() {
-    webServer.send(404, "text/plain", "Not found");
+    webServer->send(404, "text/plain", "Not found");
+}
+
+static void handleOTAPage() {
+    webServer->send_P(200, "text/html", OTA_HTML);
+}
+
+static void handleOTAUpload() {
+    HTTPUpload& upload = webServer->upload();
+    if (upload.status == UPLOAD_FILE_START) {
+        if (g_ota_in_progress) {
+            return;
+        }
+        Serial.printf("[OTA] Web flash: %s\n", upload.filename.c_str());
+        g_ota_in_progress = true;
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+            Update.printError(Serial);
+            g_ota_in_progress = false;
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (!Update.end(true)) {
+            Update.printError(Serial);
+            g_ota_in_progress = false;
+        }
+    }
+}
+
+static void handleOTAComplete() {
+    if (Update.hasError()) {
+        String err = Update.errorString();
+        Serial.printf("[OTA] Web flash FAILED: %s\n", err.c_str());
+        webServer->send(500, "text/plain", "OTA FAILED: " + err);
+        g_ota_in_progress = false;
+    } else {
+        Serial.println("[OTA] Web flash OK - rebooting");
+        webServer->send(200, "text/plain", "OK - rebooting");
+        webServer->client().stop();  // graceful TCP close before reset
+        delay(500);
+        ESP.restart();
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -315,16 +389,19 @@ static void handleNotFound() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 void webUI_init() {
-    webServer.on("/",            HTTP_GET,  handleDashboard);
-    webServer.on("/settings",    HTTP_GET,  handleSettings);
-    webServer.on("/api/stats",   HTTP_GET,  handleStats);
-    webServer.on("/api/settings",HTTP_POST, handleSaveSettings);
-    webServer.on("/api/reset-wifi", HTTP_POST, handleResetWifi);
-    webServer.onNotFound(handleNotFound);
-    webServer.begin();
+    webServer = new WebServer(8080);
+    webServer->on("/",            HTTP_GET,  handleDashboard);
+    webServer->on("/settings",    HTTP_GET,  handleSettings);
+    webServer->on("/api/stats",   HTTP_GET,  handleStats);
+    webServer->on("/api/settings",HTTP_POST, handleSaveSettings);
+    webServer->on("/api/reset-wifi", HTTP_POST, handleResetWifi);
+    webServer->on("/update",      HTTP_GET,  handleOTAPage);
+    webServer->on("/update",      HTTP_POST, handleOTAComplete, handleOTAUpload);
+    webServer->onNotFound(handleNotFound);
+    webServer->begin();
     Serial.println("Web UI started on port 8080");
 }
 
 void webUI_process() {
-    webServer.handleClient();
+    webServer->handleClient();
 }

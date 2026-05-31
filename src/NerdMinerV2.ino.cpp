@@ -71,10 +71,6 @@ static void __post_ctor() { ets_printf("[DBG] post-ctor (priority 65535) -- all 
 void setup()
 {
   ets_printf("[DBG] setup() start\n");
-  Serial.begin(115200);
-  delay(200);
-  Serial.println("\n\n=== NerdMinerAI SETUP START ===");
-  Serial.flush();
 
       //Init pin 15 to eneble 5V external power (LilyGo bug)
   #ifdef PIN_ENABLE5V
@@ -223,7 +219,7 @@ void setup()
   xTaskCreate(runOTATask, "OTA", 8192, NULL, 1, NULL);
 
   /******** WIFI GUARDIAN TASK *****/
-  xTaskCreate(runWiFiGuardian, "WiFiGuard", 2048, NULL, 1, NULL);
+  xTaskCreate(runWiFiGuardian, "WiFiGuard", 3584, NULL, 1, NULL);
 
   /******** WEB UI (port 8080) *****/
   webUI_init();

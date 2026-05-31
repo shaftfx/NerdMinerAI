@@ -4,6 +4,7 @@
 //#include ".h"
 
 #include <WiFi.h>
+#include "esp_wifi.h"
 
 #include <WiFiManager.h>
 
@@ -150,14 +151,10 @@ void init_WifiManager()
     // Change to true when testing to force configuration every time we run
     bool forceConfig = false;
 
-#if defined(PIN_BUTTON_2)
-    // Check if button2 is pressed to enter configMode with actual configuration
-    if (!digitalRead(PIN_BUTTON_2)) {
-        Serial.println(F("Button pressed to force start config mode"));
-        forceConfig = true;
-        wm.setBreakAfterConfig(true); //Set to detect config edition and save
-    }
-#endif
+// Note: boot-time PIN_BUTTON_2 read removed — GPIO 34-39 have no internal pull-up and
+// may float LOW, causing spurious force-config on every boot.
+// Force-config still works: long-press button 2 (5s) calls reset_configuration(),
+// which wipes config; next boot has no config file and enters portal automatically.
     // Explicitly set WiFi mode
     WiFi.mode(WIFI_STA);
 
@@ -334,7 +331,9 @@ void init_WifiManager()
         Serial.println("WiFi connected");
         Serial.print("IP address: ");
         Serial.println(WiFi.localIP());
-
+        esp_wifi_set_ps(WIFI_PS_NONE);
+        esp_wifi_set_max_tx_power(78);
+        Serial.println("[WiFi] Modem sleep disabled, TX power maxed");
 
         // Lets deal with the user config values
 

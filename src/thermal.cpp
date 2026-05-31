@@ -27,3 +27,22 @@ uint32_t thermal_nonce_sw(uint32_t base) {
     if (t < 75.0f) return base * 3 / 4;
     return base / 2;
 }
+
+// Scale CPU frequency based on temperature with hysteresis.
+// Down-shift at >=65°C; recover only after cooling below 60°C.
+void thermal_apply_frequency() {
+#if defined(CONFIG_IDF_TARGET_ESP32)   || \
+    defined(CONFIG_IDF_TARGET_ESP32S2) || \
+    defined(CONFIG_IDF_TARGET_ESP32S3) || \
+    defined(CONFIG_IDF_TARGET_ESP32C3)
+    static bool throttled = false;
+    float t = thermal_read_celsius();
+    if (!throttled && t >= 65.0f) {
+        setCpuFrequencyMhz(160);
+        throttled = true;
+    } else if (throttled && t < 60.0f) {
+        setCpuFrequencyMhz(240);
+        throttled = false;
+    }
+#endif
+}

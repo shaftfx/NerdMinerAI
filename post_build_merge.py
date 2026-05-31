@@ -112,24 +112,24 @@ def create_merged_firmware(source, target, env):
     env_name = env.subst("$PIOENV")
     version = get_firmware_version()
     
-    print(f"\n🔨 Building firmware files for {env_name}...")
-    
+    print(f"\n[MERGE] Building firmware files for {env_name}...")
+
     # File paths in build directory
     bootloader_file = build_dir / "bootloader.bin"
     partitions_file = build_dir / "partitions.bin"
     boot_app0_file = build_dir / "boot_app0.bin"
     firmware_file = build_dir / "firmware.bin"
-    
+
     # Check if firmware exists
     if not firmware_file.exists():
-        print(f"❌ Firmware file not found: {firmware_file}")
+        print(f"[MERGE] ERROR: Firmware file not found: {firmware_file}")
         return
-    
+
     # Auto-detect ESP32 type
     esp_type = detect_esp32_type(bootloader_file) if bootloader_file.exists() else 'ESP32'
     addresses = get_memory_layout(esp_type)
-    
-    print(f"📱 Detected: {esp_type} (bootloader at 0x{addresses['bootloader']:04X})")
+
+    print(f"[MERGE] Detected: {esp_type} (bootloader at 0x{addresses['bootloader']:04X})")
     
     # Output directory with version subfolder
     version_dir = project_dir / "firmware" / version
@@ -143,9 +143,9 @@ def create_merged_firmware(source, target, env):
     try:
         import shutil
         shutil.copy2(firmware_file, update_file)
-        print(f"✅ Firmware: {update_file.name}")
+        print(f"[MERGE] Firmware: {update_file.name}")
     except Exception as e:
-        print(f"❌ Error creating firmware file: {e}")
+        print(f"[MERGE] ERROR creating firmware file: {e}")
         return
     
     # 2. Create factory file (merged)
@@ -173,18 +173,18 @@ def create_merged_firmware(source, target, env):
                 with open(file_path, 'rb') as f:
                     data = f.read()
                 
-                print(f"   📄 {file_type} at 0x{address:06X}: {len(data)} bytes")
-                
+                print(f"   [MERGE] {file_type} at 0x{address:06X}: {len(data)} bytes")
+
                 if address + len(data) <= merged_size:
                     merged_data[address:address+len(data)] = data
                     max_address = max(max_address, address + len(data))
                 else:
-                    print(f"⚠️  Warning: {file_type} too large, truncating")
+                    print(f"[MERGE] WARNING: {file_type} too large, truncating")
                     remaining = merged_size - address
                     merged_data[address:address+remaining] = data[:remaining]
                     max_address = merged_size
             else:
-                print(f"⚠️  Warning: {file_type} not found: {file_path}")
+                print(f"[MERGE] WARNING: {file_type} not found: {file_path}")
         
         # Find actual end of data (round up to 4K boundary)
         actual_end = ((max_address + 4095) // 4096) * 4096
@@ -193,10 +193,10 @@ def create_merged_firmware(source, target, env):
         with open(factory_file, 'wb') as f:
             f.write(merged_data[:actual_end])
         
-        print(f"✅ Factory: {factory_file.name} ({actual_end} bytes)")
-        
+        print(f"[MERGE] Factory: {factory_file.name} ({actual_end} bytes)")
+
     except Exception as e:
-        print(f"❌ Error creating factory file: {e}")
+        print(f"[MERGE] ERROR creating factory file: {e}")
 
 # Add post-build hook
 env.AddPostAction("$BUILD_DIR/firmware.bin", create_merged_firmware)
