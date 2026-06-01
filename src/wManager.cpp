@@ -331,9 +331,8 @@ void init_WifiManager()
         Serial.println("WiFi connected");
         Serial.print("IP address: ");
         Serial.println(WiFi.localIP());
-        esp_wifi_set_ps(WIFI_PS_NONE);
-        esp_wifi_set_max_tx_power(78);
-        Serial.println("[WiFi] Modem sleep disabled, TX power maxed");
+        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        Serial.println("[WiFi] Modem sleep: MIN (TCP keepalive handles pool connection)");
 
         // Lets deal with the user config values
 
