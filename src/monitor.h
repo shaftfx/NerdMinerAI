@@ -18,22 +18,22 @@
 //#define getBTCAPI "https://api.blockchain.com/v3/exchange/tickers/BTC-USDT" -- updates infrequently
 #define getBTCAPI "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
 
-#define UPDATE_BTC_min   1
+#define UPDATE_BTC_min   10
 
 //API Block height
 #define getHeightAPI "https://mempool.space/api/blocks/tip/height"
-#define UPDATE_Height_min 2
+#define UPDATE_Height_min 10
 
 //APIs Global Stats
 #define getGlobalHash "https://mempool.space/api/v1/mining/hashrate/3d"
 #define getDifficulty "https://mempool.space/api/v1/difficulty-adjustment"
 #define getFees "https://mempool.space/api/v1/fees/recommended"
-#define UPDATE_Global_min 2
+#define UPDATE_Global_min 10
 
 //API public-pool.io
 // https://public-pool.io:40557/api/client/btcString
 #define getPublicPool "https://public-pool.io:40557/api/client/" // +btcString
-#define UPDATE_POOL_min   1
+#define UPDATE_POOL_min   10
 
 #define NEXT_HALVING_EVENT 1050000 //840000
 #define HALVING_BLOCKS 210000
@@ -124,6 +124,7 @@ typedef struct{
 }pool_data;
 
 void setup_monitor(void);
+void runDataFetcher(void* pv);
 
 mining_data getMiningData(unsigned long mElapsed);
 clock_data getClockData(unsigned long mElapsed);

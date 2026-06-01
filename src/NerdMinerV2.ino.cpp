@@ -221,6 +221,9 @@ void setup()
   /******** WIFI GUARDIAN TASK *****/
   xTaskCreate(runWiFiGuardian, "WiFiGuard", 3584, NULL, 1, NULL);
 
+  /******** DATA FETCHER TASK (HTTPS calls at miner priority, not Monitor priority) *****/
+  xTaskCreate(runDataFetcher, "DataFetch", 8192, NULL, 1, NULL);
+
   /******** WEB UI (port 8080) *****/
   webUI_init();
 }

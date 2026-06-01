@@ -57,11 +57,12 @@ void setup_monitor(void){
 unsigned long mGlobalUpdate =0;
 
 void updateGlobalData(void){
-    
+
     if((mGlobalUpdate == 0) || (millis() - mGlobalUpdate > UPDATE_Global_min * 60 * 1000)){
-    
+        mGlobalUpdate = millis(); // claim slot first — prevents concurrent fetches from two tasks
+
         if (WiFi.status() != WL_CONNECTED) return;
-            
+
         //Make first API call to get global hash and current difficulty
         HTTPClient http;
         http.setTimeout(10000);
@@ -71,7 +72,7 @@ void updateGlobalData(void){
 
         if (httpCode == HTTP_CODE_OK) {
             String payload = http.getString();
-            
+
             StaticJsonDocument<1024> doc;
             deserializeJson(doc, payload);
             String temp = "";
@@ -84,19 +85,17 @@ void updateGlobalData(void){
               gData.difficulty = temp.substring(0,temp.length()-2) + "." + temp.substring(temp.length()-2,temp.length()) + "T";
             }
             doc.clear();
-
-            mGlobalUpdate = millis();
         }
         http.end();
 
-      
+
         //Make third API call to get fees
         http.begin(getFees);
         httpCode = http.GET();
 
         if (httpCode == HTTP_CODE_OK) {
             String payload = http.getString();
-            
+
             StaticJsonDocument<1024> doc;
             deserializeJson(doc, payload);
             String temp = "";
@@ -108,10 +107,8 @@ void updateGlobalData(void){
             if (doc.containsKey("minimumFee"))  gData.minimumFee = doc["minimumFee"].as<int>();
 #endif
             doc.clear();
-
-            mGlobalUpdate = millis();
         }
-        
+
         http.end();
         } catch(...) {
           Serial.println("Global data HTTP error caught");
@@ -123,11 +120,12 @@ void updateGlobalData(void){
 unsigned long mHeightUpdate = 0;
 
 String getBlockHeight(void){
-    
+
     if((mHeightUpdate == 0) || (millis() - mHeightUpdate > UPDATE_Height_min * 60 * 1000)){
-    
+        mHeightUpdate = millis(); // claim slot first
+
         if (WiFi.status() != WL_CONNECTED) return current_block;
-            
+
         HTTPClient http;
         http.setTimeout(10000);
         try {
@@ -137,10 +135,7 @@ String getBlockHeight(void){
         if (httpCode == HTTP_CODE_OK) {
             String payload = http.getString();
             payload.trim();
-
             current_block = payload;
-
-            mHeightUpdate = millis();
         }        
         http.end();
         } catch(...) {
@@ -155,18 +150,18 @@ String getBlockHeight(void){
 unsigned long mBTCUpdate = 0;
 
 String getBTCprice(void){
-    
+
     if((mBTCUpdate == 0) || (millis() - mBTCUpdate > UPDATE_BTC_min * 60 * 1000)){
-    
+        mBTCUpdate = millis(); // claim slot first
+
         if (WiFi.status() != WL_CONNECTED) {
             static char price_buffer[16];
             snprintf(price_buffer, sizeof(price_buffer), "$%u", bitcoin_price);
             return String(price_buffer);
         }
-        
+
         HTTPClient http;
         http.setTimeout(10000);
-        bool priceUpdated = false;
 
         try {
         http.begin(getBTCAPI);
@@ -177,16 +172,14 @@ String getBTCprice(void){
 
             StaticJsonDocument<1024> doc;
             deserializeJson(doc, payload);
-          
+
             if (doc.containsKey("bitcoin") && doc["bitcoin"].containsKey("usd")) {
                 bitcoin_price = doc["bitcoin"]["usd"];
             }
 
             doc.clear();
-
-            mBTCUpdate = millis();
         }
-        
+
         http.end();
         } catch(...) {
           Serial.println("BTC price HTTP error caught");
@@ -437,8 +430,9 @@ String getPoolAPIUrl(void) {
 }
 
 pool_data getPoolData(void){
-    //pool_data pData;    
-    if((mPoolUpdate == 0) || (millis() - mPoolUpdate > UPDATE_POOL_min * 60 * 1000)){      
+    //pool_data pData;
+    if((mPoolUpdate == 0) || (millis() - mPoolUpdate > UPDATE_POOL_min * 60 * 1000)){
+        mPoolUpdate = millis(); // claim slot first
         if (WiFi.status() != WL_CONNECTED) return pData;            
         //Make first API call to get global hash and current difficulty
         HTTPClient http;
@@ -486,7 +480,6 @@ pool_data getPoolData(void){
               pData.bestDifficulty = String(best_diff_string);
               }
               doc.clear();
-              mPoolUpdate = millis();
               Serial.println("\n####### Pool Data OK!");               
           } else {
               Serial.println("\n####### Pool Data HTTP Error!");    
@@ -502,14 +495,31 @@ pool_data getPoolData(void){
           }
           http.end();
         } catch(...) {
-          Serial.println("####### Pool Error!");          
-          // mPoolUpdate = millis();
+          Serial.println("####### Pool Error!");
           pData.bestDifficulty = "P";
           pData.workersHash = "Error";
           pData.workersCount = 0;
           http.end();
           return pData;
-        } 
+        }
     }
     return pData;
+}
+
+// Background task: runs all HTTPS data fetches at priority 1 so TLS handshakes
+// never preempt mining workers (which also run at priority 1).
+// The fetch functions use timer-stamp-at-start to prevent concurrent fetches
+// from this task and the Monitor task calling the same function simultaneously.
+void runDataFetcher(void* pv) {
+    // Stagger first fetch by 30s to let WiFi and pool connect first
+    vTaskDelay(30000 / portTICK_PERIOD_MS);
+    for (;;) {
+        if (WiFi.status() == WL_CONNECTED) {
+            getBTCprice();
+            getBlockHeight();
+            updateGlobalData();
+            getPoolData();
+        }
+        vTaskDelay(UPDATE_BTC_min * 60000 / portTICK_PERIOD_MS);
+    }
 }
