@@ -337,6 +337,13 @@ static void handleResetWifi() {
     reset_configuration();
 }
 
+static void handleRestart() {
+    webServer->send(200, "application/json", "{\"ok\":true}");
+    webServer->client().stop();
+    delay(300);
+    ESP.restart();
+}
+
 static void handleNotFound() {
     webServer->send(404, "text/plain", "Not found");
 }
@@ -395,6 +402,7 @@ void webUI_init() {
     webServer->on("/api/stats",   HTTP_GET,  handleStats);
     webServer->on("/api/settings",HTTP_POST, handleSaveSettings);
     webServer->on("/api/reset-wifi", HTTP_POST, handleResetWifi);
+    webServer->on("/api/restart",    HTTP_POST, handleRestart);
     webServer->on("/update",      HTTP_GET,  handleOTAPage);
     webServer->on("/update",      HTTP_POST, handleOTAComplete, handleOTAUpload);
     webServer->onNotFound(handleNotFound);
