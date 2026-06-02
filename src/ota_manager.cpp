@@ -152,11 +152,11 @@ static void ota_check_and_update() {
     if (!http.begin(client, OTA_API_URL)) return;
 
     // Filter to only the fields we need — keeps RAM usage low.
+    // assets is an array; use [0] so ArduinoJson applies the filter to every element.
     StaticJsonDocument<128> filter;
     filter["tag_name"] = true;
-    JsonObject af = filter["assets"].createNestedObject();
-    af["name"] = true;
-    af["browser_download_url"] = true;
+    filter["assets"][0]["name"] = true;
+    filter["assets"][0]["browser_download_url"] = true;
 
     int code = http.GET();
     if (code != HTTP_CODE_OK) {
