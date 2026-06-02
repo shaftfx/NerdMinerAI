@@ -8,3 +8,10 @@ NerdMinerLog.txt
 bin/0x10000_firmware.bin
 logs
 boards/ESP32_wroom_guide.md
+firmware/
+boot.log
+boot_raw.bin
+boot_raw.txt
+flash_verify.bin
+*.bin
+*.sha256
