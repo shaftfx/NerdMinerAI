@@ -82,7 +82,7 @@ def device_alive(ip, timeout=3):
     except OSError:
         return False
 
-def _wait_for_reboot(ip, wait=60, poll=2):
+def _wait_for_reboot(ip, wait=120, poll=2):
     deadline = time.time() + wait
     time.sleep(5)
     while time.time() < deadline:

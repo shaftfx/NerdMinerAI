@@ -355,9 +355,7 @@ static void handleOTAPage() {
 static void handleOTAUpload() {
     HTTPUpload& upload = webServer->upload();
     if (upload.status == UPLOAD_FILE_START) {
-        if (g_ota_in_progress) {
-            return;
-        }
+        if (g_ota_in_progress) return;
         Serial.printf("[OTA] Web flash: %s\n", upload.filename.c_str());
         g_ota_in_progress = true;
         if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
@@ -383,9 +381,9 @@ static void handleOTAComplete() {
         webServer->send(500, "text/plain", "OTA FAILED: " + err);
         g_ota_in_progress = false;
     } else {
-        Serial.println("[OTA] Web flash OK - rebooting");
+        Serial.println("[OTA] Web flash OK — rebooting");
         webServer->send(200, "text/plain", "OK - rebooting");
-        webServer->client().stop();  // graceful TCP close before reset
+        webServer->client().stop();
         delay(500);
         ESP.restart();
     }
