@@ -154,7 +154,7 @@ if __name__ == "__main__":
             firmware_path = Path(a)
 
     if usb_port:
-        print(f"Mode     : USB full flash → {usb_port}")
+        print(f"Mode     : USB full flash -> {usb_port}")
         print(f"Firmware : {firmware_path}")
         print()
         usb_flash(usb_port, firmware_path)
