@@ -15,6 +15,7 @@
 #include "rotation.h"
 #include "drivers/storage/nvMemory.h"
 #include "drivers/storage/storage.h"
+#include <WiFi.h>
 
 #define WIDTH 130 //320
 #define HEIGHT 170 
@@ -258,11 +259,20 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
   render.setFontSize(10);
   render.rdrawString(data.currentTime.c_str(), 286-wdtOffset, 1, TFT_BLACK);
 
+  // Unit IP label (last octet) for physical identification
+  {
+    String ip = WiFi.localIP().toString();
+    int dot = ip.lastIndexOf('.');
+    String label = (dot >= 0) ? ip.substring(dot) : ip;
+    render.setFontSize(10);
+    render.rdrawString(label.c_str(), 120, 148, TFT_BLACK);
+  }
+
   // Push prepared background to screen
   background.pushSprite(190, 0);
 
   // Delete sprite to free the memory heap
-  background.deleteSprite();   
+  background.deleteSprite();
   // printheap();
 
    //Serial.println("=========== Mining Display ==============") ;

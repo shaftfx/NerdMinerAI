@@ -21,7 +21,7 @@ from pathlib import Path
 
 BUILD_DIR        = Path(".pio/build/ESP32_2432S028_2USB")
 DEFAULT_FIRMWARE = BUILD_DIR / "firmware.bin"
-DEFAULT_IPS      = ["192.168.87.21", "192.168.87.22", "192.168.87.23"]
+DEFAULT_IPS      = ["192.168.87.21", "192.168.87.22", "192.168.87.23", "192.168.87.24"]
 PORT             = 8080
 BAUD             = 921600
 
