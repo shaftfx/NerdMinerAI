@@ -287,9 +287,29 @@ void runStratumWorker(void *name) {
   // Exponential backoff for reconnect: 1s -> 2s -> 4s -> ... capped at 60s
   uint32_t reconnect_backoff_ms = 1000;
   uint32_t last_pool_switch_ms  = 0;
+  uint32_t last_score_check_ms  = 0;
 
   while(true) {
-      
+
+    // Proactive pool scoring: every 5 min compare current vs best pool score
+    {
+      uint32_t now = millis();
+      if (now - last_score_check_ms >= 5*60*1000) {
+        last_score_check_ms = now;
+        uint8_t best = pool_scorer_best();
+        if (best != g_active_pool_idx
+            && now - last_pool_switch_ms >= 15*60*1000
+            && pool_scorer_score(g_active_pool_idx) < 0.6f * pool_scorer_score(best)) {
+          Serial.printf("[PoolScorer] Proactive switch %d->%d (score %.6f vs %.6f)\n",
+                        g_active_pool_idx, best,
+                        pool_scorer_score(g_active_pool_idx),
+                        pool_scorer_score(best));
+          g_active_pool_idx    = best;
+          last_pool_switch_ms  = now;
+        }
+      }
+    }
+
     // Pool scorer: switch pool when scorer recommends it
     if (g_active_pool_idx != current_pool_idx) {
       const PoolConfig& pc = pool_scorer_config(g_active_pool_idx);
@@ -457,6 +477,7 @@ void runStratumWorker(void *name) {
 
                                           last_job_time = millis();
                                           mLastTXtoPool = last_job_time;
+                                          pool_scorer_on_job(g_active_pool_idx, last_job_time);
 
                                           uint32_t mh = hashes/1000000;
                                           Mhashes += mh;

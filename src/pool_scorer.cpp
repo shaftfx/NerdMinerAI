@@ -1,22 +1,29 @@
 #include "pool_scorer.h"
 
 // EWMA decay constants
-#define ALPHA_LATENCY  0.10f  // slow adaptation to latency changes
-#define ALPHA_ACCEPT   0.20f  // faster adaptation to acceptance rate
+#define ALPHA_LATENCY      0.10f  // slow adaptation to latency changes
+#define ALPHA_ACCEPT       0.20f  // faster adaptation to acceptance rate
+#define ALPHA_JOB_INTERVAL 0.15f  // medium adaptation to template frequency
 
 // Switch when primary score < SWITCH_RATIO * best_alt_score for SWITCH_STRIKES measurements.
 #define SWITCH_RATIO   0.5f
 #define SWITCH_STRIKES 5
 
+// Initial job interval prior: 60s (conservative; updates quickly once jobs arrive)
+#define INIT_JOB_INTERVAL_MS 60000.0f
+
 volatile uint8_t g_active_pool_idx = 0;
 
 struct PoolStats {
-    float    ewma_latency_ms;   // lower is better
-    float    ewma_accept_rate;  // 0..1, higher is better
-    uint32_t submit_ts;         // timestamp of last outstanding submit
+    float    ewma_latency_ms;      // lower is better
+    float    ewma_accept_rate;     // 0..1, higher is better
+    float    ewma_job_interval_ms; // lower = more templates = better
+    uint32_t submit_ts;            // timestamp of last outstanding submit
+    uint32_t last_job_ts;          // timestamp of last MINING_NOTIFY received
     uint32_t submits;
     uint32_t accepts;
     uint32_t rejects;
+    uint32_t jobs_received;
     bool     initialized;
 };
 
@@ -27,7 +34,7 @@ static uint8_t    s_switch_strike_count = 0;
 void pool_scorer_init(const PoolConfig configs[POOL_COUNT]) {
     for (int i = 0; i < POOL_COUNT; i++) {
         s_configs[i] = configs[i];
-        s_stats[i]   = { 200.0f, 0.5f, 0, 0, 0, 0, false };
+        s_stats[i]   = { 200.0f, 0.5f, INIT_JOB_INTERVAL_MS, 0, 0, 0, 0, 0, 0, false };
     }
     g_active_pool_idx   = 0;
     s_switch_strike_count = 0;
@@ -83,11 +90,26 @@ void pool_scorer_on_reject(uint8_t idx) {
     }
 }
 
+void pool_scorer_on_job(uint8_t idx, uint32_t ts_ms) {
+    if (idx >= POOL_COUNT) return;
+    PoolStats& s = s_stats[idx];
+    if (s.last_job_ts > 0 && ts_ms > s.last_job_ts) {
+        uint32_t interval = ts_ms - s.last_job_ts;
+        s.ewma_job_interval_ms = ALPHA_JOB_INTERVAL * (float)interval
+                               + (1.0f - ALPHA_JOB_INTERVAL) * s.ewma_job_interval_ms;
+        if (!s.initialized) s.initialized = true;  // first real interval = enough to score
+    }
+    s.last_job_ts = ts_ms;
+    s.jobs_received++;
+}
+
 float pool_scorer_score(uint8_t idx) {
     if (idx >= POOL_COUNT) return 0.0f;
     const PoolStats& s = s_stats[idx];
     if (!s.initialized) return 0.5f / 201.0f; // neutral prior
-    return s.ewma_accept_rate / (s.ewma_latency_ms + 1.0f);
+    // template_rate is the dominant factor: more jobs/sec = more unique work explored
+    float template_rate = 1000.0f / (s.ewma_job_interval_ms + 1.0f);
+    return template_rate * s.ewma_accept_rate / (s.ewma_latency_ms + 1.0f);
 }
 
 uint8_t pool_scorer_best() {

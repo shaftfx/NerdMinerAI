@@ -13,6 +13,7 @@ void     pool_scorer_init(const PoolConfig configs[POOL_COUNT]);
 void     pool_scorer_on_submit(uint8_t pool_idx, uint32_t ts_ms);
 void     pool_scorer_on_accept(uint8_t pool_idx, uint32_t ts_ms);
 void     pool_scorer_on_reject(uint8_t pool_idx);
+void     pool_scorer_on_job(uint8_t pool_idx, uint32_t ts_ms);  // call on each MINING_NOTIFY
 uint8_t  pool_scorer_best();            // index of highest-scoring available pool
 float    pool_scorer_score(uint8_t idx);
 const PoolConfig& pool_scorer_config(uint8_t idx);
