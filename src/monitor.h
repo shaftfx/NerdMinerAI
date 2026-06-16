@@ -126,6 +126,8 @@ typedef struct{
 void setup_monitor(void);
 void runDataFetcher(void* pv);
 
+extern volatile uint32_t g_datafetcher_tick_ms;  // heartbeat for watchdog
+
 mining_data getMiningData(unsigned long mElapsed);
 clock_data getClockData(unsigned long mElapsed);
 coin_data getCoinData(unsigned long mElapsed);

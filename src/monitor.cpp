@@ -119,6 +119,9 @@ void updateGlobalData(void){
 
 unsigned long mHeightUpdate = 0;
 
+#define HEIGHT_FALLBACK_API "https://blockstream.info/api/blocks/tip/height"
+#define HEIGHT_FAIL_THRESHOLD 3
+
 String getBlockHeight(void){
 
     if((mHeightUpdate == 0) || (millis() - mHeightUpdate > UPDATE_Height_min * 60 * 1000)){
@@ -126,24 +129,49 @@ String getBlockHeight(void){
 
         if (WiFi.status() != WL_CONNECTED) return current_block;
 
+        static uint8_t height_fail_count = 0;
+        bool fetched = false;
+
         HTTPClient http;
         http.setTimeout(10000);
         try {
-        http.begin(getHeightAPI);
-        int httpCode = http.GET();
-
-        if (httpCode == HTTP_CODE_OK) {
-            String payload = http.getString();
-            payload.trim();
-            current_block = payload;
-        }        
-        http.end();
+            http.begin(getHeightAPI);
+            int httpCode = http.GET();
+            if (httpCode == HTTP_CODE_OK) {
+                String payload = http.getString();
+                payload.trim();
+                current_block = payload;
+                height_fail_count = 0;
+                fetched = true;
+            }
+            http.end();
         } catch(...) {
-          Serial.println("Height HTTP error caught");
-          http.end();
+            Serial.println("Height HTTP error caught");
+            http.end();
+        }
+
+        if (!fetched) {
+            if (++height_fail_count >= HEIGHT_FAIL_THRESHOLD) {
+                Serial.printf("[Monitor] Primary height API failed %d times, trying fallback\n", height_fail_count);
+                try {
+                    http.begin(HEIGHT_FALLBACK_API);
+                    int httpCode = http.GET();
+                    if (httpCode == HTTP_CODE_OK) {
+                        String payload = http.getString();
+                        payload.trim();
+                        current_block = payload;
+                        height_fail_count = 0;
+                        Serial.println("[Monitor] Height fallback OK");
+                    }
+                    http.end();
+                } catch(...) {
+                    Serial.println("[Monitor] Height fallback error caught");
+                    http.end();
+                }
+            }
         }
     }
-  
+
   return current_block;
 }
 
@@ -510,10 +538,13 @@ pool_data getPoolData(void){
 // never preempt mining workers (which also run at priority 1).
 // The fetch functions use timer-stamp-at-start to prevent concurrent fetches
 // from this task and the Monitor task calling the same function simultaneously.
+volatile uint32_t g_datafetcher_tick_ms = 0;
+
 void runDataFetcher(void* pv) {
     // Stagger first fetch by 30s to let WiFi and pool connect first
     vTaskDelay(30000 / portTICK_PERIOD_MS);
     for (;;) {
+        g_datafetcher_tick_ms = millis();  // heartbeat — watchdog checks this
         if (WiFi.status() == WL_CONNECTED) {
             getBTCprice();
             getBlockHeight();

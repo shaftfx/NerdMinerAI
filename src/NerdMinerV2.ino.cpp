@@ -255,5 +255,22 @@ void loop() {
   wifiManagerProcess(); // avoid delays() in loop when non-blocking and other long running code
   webUI_process();
 
+  // DataFetcher watchdog: restart task if heartbeat stalls >15min while WiFi up
+  {
+    static uint32_t s_wdt_last_check = 0;
+    uint32_t now = millis();
+    if (now - s_wdt_last_check >= 5*60*1000) {
+      s_wdt_last_check = now;
+      uint32_t tick = g_datafetcher_tick_ms;
+      if (tick > 0 && WiFi.status() == WL_CONNECTED && now - tick > 15*60*1000) {
+        Serial.println("[WDT] DataFetcher stale >15min, restarting task");
+        TaskHandle_t h = xTaskGetHandle("DataFetch");
+        if (h != NULL) vTaskDelete(h);
+        g_datafetcher_tick_ms = 0;
+        xTaskCreate(runDataFetcher, "DataFetch", 8192, NULL, 1, NULL);
+      }
+    }
+  }
+
   vTaskDelay(50 / portTICK_PERIOD_MS);
 }
