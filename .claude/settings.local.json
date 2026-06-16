@@ -8,7 +8,11 @@
       "Bash(python -c \"import fitz; print\\('fitz/pymupdf OK'\\)\")",
       "Bash(pdftotext --version)",
       "Bash(python -c ' *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(curl *)",
+      "Bash(ssh -T git@github.com)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

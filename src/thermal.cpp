@@ -15,21 +15,21 @@ float thermal_read_celsius() {
 // Returns throttled nonce count for HW worker based on chip temperature.
 uint32_t thermal_nonce_hw(uint32_t base) {
     float t = thermal_read_celsius();
-    if (t < 75.0f) return base;
-    if (t < 85.0f) return base * 3 / 4;
+    if (t < 65.0f) return base;
+    if (t < 75.0f) return base * 3 / 4;
     return base / 2;
 }
 
 // Returns throttled nonce count for SW worker based on chip temperature.
 uint32_t thermal_nonce_sw(uint32_t base) {
     float t = thermal_read_celsius();
-    if (t < 75.0f) return base;
-    if (t < 85.0f) return base * 3 / 4;
+    if (t < 65.0f) return base;
+    if (t < 75.0f) return base * 3 / 4;
     return base / 2;
 }
 
 // Scale CPU frequency based on temperature with hysteresis.
-// Down-shift at >=78°C; recover only after cooling below 73°C.
+// Down-shift at >=68°C; recover only after cooling below 63°C.
 void thermal_apply_frequency() {
 #if defined(CONFIG_IDF_TARGET_ESP32)   || \
     defined(CONFIG_IDF_TARGET_ESP32S2) || \
@@ -37,10 +37,10 @@ void thermal_apply_frequency() {
     defined(CONFIG_IDF_TARGET_ESP32C3)
     static bool throttled = false;
     float t = thermal_read_celsius();
-    if (!throttled && t >= 78.0f) {
+    if (!throttled && t >= 68.0f) {
         setCpuFrequencyMhz(160);
         throttled = true;
-    } else if (throttled && t < 73.0f) {
+    } else if (throttled && t < 63.0f) {
         setCpuFrequencyMhz(240);
         throttled = false;
     }

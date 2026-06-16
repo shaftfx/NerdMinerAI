@@ -286,6 +286,7 @@ void runStratumWorker(void *name) {
   bool     stale_valid          = false;
   // Exponential backoff for reconnect: 1s -> 2s -> 4s -> ... capped at 60s
   uint32_t reconnect_backoff_ms = 1000;
+  uint32_t last_pool_switch_ms  = 0;
 
   while(true) {
       
@@ -410,8 +411,14 @@ void runStratumWorker(void *name) {
       uint32_t time_now = millis();
       if (time_now < last_job_time) //32bit wrap
         last_job_time = time_now;
-      if (time_now >= last_job_time + 10*60*1000)  //10minutes without job
+      if (time_now >= last_job_time + 5*60*1000)  // 5 min without job -> advance pool
       {
+        if (time_now - last_pool_switch_ms >= 15*60*1000) {
+          uint8_t next = (g_active_pool_idx + 1) % POOL_COUNT;
+          Serial.printf("[Stratum] No job 5min, advancing pool %d->%d\n", g_active_pool_idx, next);
+          g_active_pool_idx     = next;
+          last_pool_switch_ms   = time_now;
+        }
         client.stop();
         isMinerSuscribed=false;
         MiningJobStop(job_pool, s_submition_map);
