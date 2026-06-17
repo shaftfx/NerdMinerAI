@@ -213,16 +213,18 @@ miner_data calculateMiningData(mining_subscribe& mWorker, mining_job mJob){
     //char extranonce2_char[2 * mWorker.extranonce2_size+1];	
 	//mWorker.extranonce2.toCharArray(extranonce2_char, 2 * mWorker.extranonce2_size + 1);
     //getNextExtranonce2(mWorker.extranonce2_size, extranonce2_char);
-    if (mWorker.extranonce2_size == 2)
-        mWorker.extranonce2 = "0001";
-    else if (mWorker.extranonce2_size == 4)
-        mWorker.extranonce2 = "00000001";
-    else if (mWorker.extranonce2_size == 8)
-        mWorker.extranonce2 = "0000000000000001";
-    else
-    {
-        Serial.println("Unknown extranonce2");
-        mWorker.extranonce2 = "00000001";
+    // Caller sets extranonce2 before calling; only initialize if empty (first call)
+    if (mWorker.extranonce2.isEmpty()) {
+        if (mWorker.extranonce2_size == 2)
+            mWorker.extranonce2 = "0001";
+        else if (mWorker.extranonce2_size == 4)
+            mWorker.extranonce2 = "00000001";
+        else if (mWorker.extranonce2_size == 8)
+            mWorker.extranonce2 = "0000000000000001";
+        else {
+            Serial.println("Unknown extranonce2_size");
+            mWorker.extranonce2 = "00000001";
+        }
     }
     //mWorker.extranonce2 = "00000002";
     

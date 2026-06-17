@@ -208,6 +208,21 @@ struct Submition
   bool isValid;
 };
 
+// Increment a big-endian hex extranonce2 string in-place (e.g. "0001" -> "0002")
+static void increment_extranonce2(String& en2) {
+    int len = en2.length();
+    char buf[len + 1];
+    en2.toCharArray(buf, len + 1);
+    for (int i = len - 2; i >= 0; i -= 2) {
+        char tmp[3] = {buf[i], buf[i+1], '\0'};
+        uint8_t val = (uint8_t)strtoul(tmp, nullptr, 16);
+        val++;
+        snprintf(buf + i, 3, "%02x", val);
+        if (val != 0) break;  // no carry
+    }
+    en2 = String(buf);
+}
+
 static void MiningJobStop(uint32_t &job_pool, std::map<uint32_t, std::shared_ptr<Submition>> & submition_map)
 {
   {
@@ -483,7 +498,11 @@ void runStratumWorker(void *name) {
                                           Mhashes += mh;
                                           hashes -= mh*1000000;
 
-                                          //Prepare data for new jobs
+                                          //Prepare data for new jobs — reset extranonce2 for clean start
+                                          if      (mWorker.extranonce2_size == 2) mWorker.extranonce2 = "0001";
+                                          else if (mWorker.extranonce2_size == 4) mWorker.extranonce2 = "00000001";
+                                          else if (mWorker.extranonce2_size == 8) mWorker.extranonce2 = "0000000000000001";
+                                          else                                     mWorker.extranonce2 = "00000001";
                                           mMiner=calculateMiningData(mWorker, mJob);
 
                                           memset(mMiner.bytearray_blockheader+80, 0, 128-80);
@@ -675,6 +694,34 @@ void runStratumWorker(void *name) {
 #if 1
       while (s_job_request_list_sw.size() < 4)
       {
+        // Extranonce2 roll: all versionbits exhausted for this coinbase — new unique work
+        if (versionbits_pool > 0 && (versionbits_pool % VERSIONBITS_MAX) == 0) {
+          increment_extranonce2(mWorker.extranonce2);
+          Serial.printf("[Mining] extranonce2 roll -> %s\n", mWorker.extranonce2.c_str());
+          mMiner = calculateMiningData(mWorker, mJob);
+          memset(mMiner.bytearray_blockheader+80, 0, 128-80);
+          mMiner.bytearray_blockheader[80] = 0x80;
+          mMiner.bytearray_blockheader[126] = 0x02;
+          mMiner.bytearray_blockheader[127] = 0x80;
+          memcpy(&version_base_le, mMiner.bytearray_blockheader, 4);
+          version_base_le &= ~VERSIONBITS_MASK;
+          nerd_mids(diget_mid, mMiner.bytearray_blockheader);
+          nerd_sha256_bake(diget_mid, mMiner.bytearray_blockheader+64, bake);
+          #ifdef HARDWARE_SHA265
+          #if defined(CONFIG_IDF_TARGET_ESP32)
+          for (int i = 0; i < 32; ++i)
+            ((uint32_t*)sha_buffer_swap)[i] = __builtin_bswap32(((const uint32_t*)(mMiner.bytearray_blockheader))[i]);
+          #elif defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+          esp_sha_acquire_hardware();
+          sha_hal_hash_block(SHA2_256, mMiner.bytearray_blockheader, 64/4, true);
+          sha_hal_read_digest(SHA2_256, hw_midstate);
+          esp_sha_release_hardware();
+          #endif
+          #endif
+          memcpy(stale_sha,  mMiner.bytearray_blockheader, sizeof(stale_sha));
+          memcpy(stale_mid,  diget_mid,                    sizeof(stale_mid));
+          memcpy(stale_bake, bake,                         sizeof(stale_bake));
+        }
         // BIP320: roll versionbits and recompute midstate
         {
           uint32_t vb  = versionbits_pool & (VERSIONBITS_MAX - 1);
